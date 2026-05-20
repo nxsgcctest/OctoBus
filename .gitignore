@@ -1,0 +1,11 @@
+/data
+/build
+/playground
+/dist
+/qemu-compose.yml
+.env
+.cache
+.state
+.pnpm-store
+node_modules
+.task
