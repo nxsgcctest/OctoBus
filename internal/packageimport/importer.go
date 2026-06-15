@@ -10,9 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"octobus/internal/descriptors"
@@ -425,6 +427,66 @@ func sourceWithServiceRoot(source, serviceRoot string) string {
 		return source
 	}
 	return source + "//" + serviceRoot
+}
+
+func discoverServiceRoots(packageDir, scanRoot string) ([]string, error) {
+	if scanRoot == "" {
+		scanRoot = "."
+	}
+	cleanRoot := "."
+	if scanRoot != "." {
+		var err error
+		cleanRoot, err = cleanServiceRoot(scanRoot)
+		if err != nil {
+			return nil, err
+		}
+	}
+	scanDir := packageDir
+	if cleanRoot != "." {
+		scanDir = filepath.Join(packageDir, filepath.FromSlash(cleanRoot))
+	}
+	info, err := os.Stat(scanDir)
+	if err != nil {
+		return nil, fmt.Errorf("scan root %q: %w", cleanRoot, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("scan root %q is not a directory", cleanRoot)
+	}
+	var roots []string
+	if err := filepath.WalkDir(scanDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		if path != scanDir && skipDiscoveryDir(entry.Name()) {
+			return filepath.SkipDir
+		}
+		if _, err := os.Stat(filepath.Join(path, "service.json")); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		rel, err := filepath.Rel(packageDir, path)
+		if err != nil {
+			return err
+		}
+		roots = append(roots, filepath.ToSlash(rel))
+		return filepath.SkipDir
+	}); err != nil {
+		return nil, fmt.Errorf("discover service roots under %q: %w", cleanRoot, err)
+	}
+	sort.Strings(roots)
+	if len(roots) == 0 {
+		return nil, fmt.Errorf("no service roots found under %q", cleanRoot)
+	}
+	return roots, nil
+}
+
+func skipDiscoveryDir(name string) bool {
+	return name == "node_modules" || name == ".git" || strings.HasPrefix(name, ".")
 }
 
 func (i *Importer) packNPM(ctx context.Context, spec, staging string) (preparedSource, error) {

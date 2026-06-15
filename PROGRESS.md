@@ -73,16 +73,16 @@
   - 验收标准：本地 source 规范化保留 `//service-dir`；旧单 service local/npm source 测试继续通过。
   - 完成总结：已将 `normalizeImportSource` 调整为对非 URL source 先拆分 `//service-dir`，只对 package root 调用本地绝对路径规范化，再拼回 service root；`npm:` source 复用同一逻辑并保留前缀；包含 `://` 的 HTTPS Git source 原样传递给 importer。新增 `TestNormalizeImportSourcePreservesServiceRoot` 覆盖 `./pkg//nested`、`npm:./pkg//nested` 和 HTTPS Git `//svc@ref` 不被拆分。验证命令：`go test ./internal/cli`，结果通过。
 
-- [ ] 2.2 实现 service root 递归发现 helper
+- [x] 2.2 实现 service root 递归发现 helper
   - 依赖：1.2。
   - 工作内容：在 `internal/packageimport` 新增 discovery helper，输入 package dir 和 scan root，输出稳定排序的 package root 相对 service roots；命中 `service.json` 后不深入；跳过 `node_modules`、`.git` 和隐藏目录。
   - 可并行子任务：
-    - [ ] 可并行：实现 scan root 校验和错误信息。
-    - [ ] 可并行：实现遍历跳过规则和稳定排序。
-    - [ ] 可并行：为 root service、嵌套 service、空发现和跳过目录写单测。
+    - [x] 可并行：实现 scan root 校验和错误信息。
+    - [x] 可并行：实现遍历跳过规则和稳定排序。
+    - [x] 可并行：为 root service、嵌套 service、空发现和跳过目录写单测。
   - 测试方案：`go test ./internal/packageimport`。
   - 验收标准：discovery 输出与文件系统遍历顺序无关；scan root 不存在、非法或空发现时返回明确错误。
-  - 完成总结：待完成。
+  - 完成总结：已新增 `discoverServiceRoots(packageDir, scanRoot)` helper，默认 scan root 为 `"."`，对非根 scan root 复用 `cleanServiceRoot` 做包内路径校验；扫描时发现 `service.json` 即记录 package root 相对 service root 并停止深入，跳过 `node_modules`、`.git` 和点号开头目录，最终按 service root 稳定排序。新增测试覆盖全包发现、`nested` scan root、package root 自身就是 service root 时不继续深入、scan root 缺失、scan root 是文件、空发现和非法路径。验证命令：`go test ./internal/packageimport`，结果通过。
 
 - [ ] 2.3 保持单 service source 解析兼容
   - 依赖：2.1、2.2。

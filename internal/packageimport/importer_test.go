@@ -280,6 +280,67 @@ func TestSplitSourceServiceRoot(t *testing.T) {
 	}
 }
 
+func TestDiscoverServiceRoots(t *testing.T) {
+	pkg := writeMultiServiceTestPackage(t, t.TempDir())
+	roots, err := discoverServiceRoots(pkg.Root, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"nested/vendor__gamma", "vendor__alpha", "vendor__beta"}
+	if strings.Join(roots, ",") != strings.Join(want, ",") {
+		t.Fatalf("discoverServiceRoots(.)=%v want %v", roots, want)
+	}
+}
+
+func TestDiscoverServiceRootsScanRoot(t *testing.T) {
+	pkg := writeMultiServiceTestPackage(t, t.TempDir())
+	roots, err := discoverServiceRoots(pkg.Root, "nested")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"nested/vendor__gamma"}
+	if strings.Join(roots, ",") != strings.Join(want, ",") {
+		t.Fatalf("discoverServiceRoots(nested)=%v want %v", roots, want)
+	}
+}
+
+func TestDiscoverServiceRootsStopsAtRootService(t *testing.T) {
+	root := t.TempDir()
+	writeTestPackage(t, root, `{"schema":"chaitin.octobus.service.v1","name":"echo-wrapper","proto":{"roots":["proto"],"files":["proto/echo.proto"]}}`)
+	writeMultiServiceRoot(t, root, multiServiceTestService{ServiceRoot: "nested/vendor__gamma", ID: "gamma-service", NodeEntry: "bin/gamma-service.js", MethodFull: "gamma.v1.GammaService/Call"})
+	roots, err := discoverServiceRoots(root, ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"."}
+	if strings.Join(roots, ",") != strings.Join(want, ",") {
+		t.Fatalf("discoverServiceRoots(root service)=%v want %v", roots, want)
+	}
+}
+
+func TestDiscoverServiceRootsErrors(t *testing.T) {
+	pkg := writeMultiServiceTestPackage(t, t.TempDir())
+	writeTestFile(t, filepath.Join(pkg.Root, "plain-file"), "fixture", 0o644)
+	tests := []struct {
+		name     string
+		scanRoot string
+		want     string
+	}{
+		{name: "missing", scanRoot: "missing", want: "scan root"},
+		{name: "file", scanRoot: "plain-file", want: "is not a directory"},
+		{name: "empty", scanRoot: "plain-dir", want: "no service roots found"},
+		{name: "invalid", scanRoot: "../outside", want: "must stay inside package"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := discoverServiceRoots(pkg.Root, tc.scanRoot)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("discoverServiceRoots(%q) error=%v want %q", tc.scanRoot, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestImporterUsesDisplayNameByDefault(t *testing.T) {
 	dataDir, s := openTestStore(t)
 	pkg := writeTestPackage(t, t.TempDir(), `{"schema":"chaitin.octobus.service.v1","name":"echo-wrapper","displayName":"Echo Wrapper","proto":{"roots":["proto"],"files":["proto/echo.proto"]}}`)
